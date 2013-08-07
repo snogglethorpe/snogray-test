@@ -280,18 +280,27 @@ update_ref_image ()
   echo "update_ref_image '$1' '$2'"
 }
 
+# Search for a parameter called "$1" in the parameter file "$2", and
+# print its value if found, otherwise just print "$3.  If there are
+# multiple such parameters, only the first printed.
+#
+# Parameters are lines of the form "NAME = VALUE" or "NAME: VALUE",
+# with VALUE being the rest of the line, and any amount of whitespace
+# being ignore.
+#
 get_param ()
 {
-  param_name="$1"; shift
-  param_file="$1"; shift
-  param_default="$1"; shift
+  param_name="$1"
+  param_file="$2"
+  param_default="$3"
 
-  if test -r "$param_file"; then
-    param_grep="$(grep "^$param_name *=" "$param_file")"
-    if test $? -eq 0; then
-      echo "$param_grep" | sed -e 's/^[^=]*= *//' -e q
+  if test -r "$param_file" && grep -l >/dev/null "^$param_name *[=:]" "$param_file"
+  then
+    sed -n -e "/^$param_name[ 	]*[=:]/{" \
+      -e   's/^[^=:]*[=:][ 	]*//p' \
+      -e   q \
+      -e '}' "$param_file"
       return 0
-    fi
   fi
 
   echo "$param_default"
