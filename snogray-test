@@ -379,7 +379,7 @@ run_one_test ()
 	#
 	if test x"$ref_image" != x && test -r "$ref_image"; then
 	  if ref_image_differs "$testout" "$ref_image"; then
-	    failures="$(echo "${failures}Reference image differs: $ref_image")"
+	    failures="$(cat_lines "$failures" "Reference image differs: $ref_image")"
 	  fi
 	fi
 
@@ -388,7 +388,7 @@ run_one_test ()
 	# with ".pbrt".  By default this is the same as the input
 	# file.
 	#
-	pbrt_test="$test_dir/$(get_param pbrt_reference_scene "$param_file" "$test_name")"
+	pbrt_test="$test_dir/$(get_param pbrt_reference "$param_file" "$test_name")"
 
 	# Maybe run PBRT and compare its result too
 	#
@@ -401,17 +401,17 @@ run_one_test ()
 	    if test $? = 0; then
 	      # PBRT succeeded
 	      if images_differ "$testout" "$pbrtout"; then
-		failures="$(echo "${failures}PBRT output differs")"
+		failures="$(cat_lines "$failures" "PBRT output differs")"
 	      fi
 	    else
 	      # PBRT failed
-	      failures="$failures$(format_failure_log PBRT "$pbrtlog")"
+	      failures="$(cat_lines "$failures" $(format_failure_log PBRT "$pbrtlog"))"
 	    fi
 	    ;;
 	esac
       else
 	# snogray failed
-	failures="$(echo "${failures}$(format_failure_log snogray "$testlog")")"
+	failures="$(cat_lines "$failures" "$(format_failure_log snogray "$testlog")")"
       fi
 
       if test x"$failures" = x; then
