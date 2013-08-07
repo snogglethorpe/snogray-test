@@ -329,6 +329,14 @@ get_params ()
   echo "$param_default"
 }
 
+# Print all arguments, each followed with a newline if it is non-empty.
+#
+cat_lines () {
+  for arg in "$@"; do
+    test x"$arg" = x || echo "$arg"
+  done
+}
+
 run_one_test ()
 {
   test="$(abs_filename "$1")"
