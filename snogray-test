@@ -410,6 +410,33 @@ run_one_test ()
 	    fi
 	    ;;
 	esac
+
+	# See if there are "compare_with" params, and if so, also run
+	# snogray on those, and compare the results
+	#
+	for compare in $(get_params compare_with "$param_file"); do
+	  compare_file="$test_dir/$compare"
+	  compare_out="$outdir/${test_name}.compare-out.$compare.$out_ext"
+
+	  # Find or generate an image file to compare
+	  #
+	  compare_prev_output_file="$outdir/${compare}.snogray-out.$out_ext"
+	  if test -r "$compare_prev_output_file"; then
+	    # re-use previously generate output file for $compare
+	    cp "$compare_prev_output_file" "$compare_out"
+	  else
+	    # generate it
+	    compare_log="$(run_snogray "$compare_file" "$compare_out")"
+	  fi
+
+	  if test $? = 0; then
+	    if images_differ "$testout" "$compare_out"; then
+	      failures="$(cat_lines "$failures" "Comparison output '$compare' differs")"
+	      test -r "$compare_out" && cp "$compare_out" "$log_dir"
+	    fi
+	  fi
+	done
+
       else
 	# snogray failed
 	failures="$(cat_lines "$failures" "$(format_failure_log snogray "$testlog")")"
