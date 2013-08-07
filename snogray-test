@@ -1,0 +1,417 @@
+#!/bin/sh
+#
+# Test script for snogray.
+#
+# Usage: snogray-test [OPTION...] SNOGRAY_EXECUTABLE TEST...
+#
+# Where TEST is either a scene file or a directory containing scene
+# files.  If it is a directory, snogray-test will process all tests in
+# that directory.  The directory containing a test file is known as
+# the "test directory," and other files will be located there.
+#
+# Only scene files with the following extensions are processed:
+#
+#   .pbrt    PBRT format scenes  
+#   .lua     Native snogray scenes written using Lua
+#
+# In addition to scene-files, the test directory can contain special
+# files with the following names:
+#
+#   ref/     A directory containing reference images for each test,
+#            which are compared with the output of the test scene files.
+#
+#   SUBDIRS  A list of subdirectories, also holding tests
+#
+
+SNOGRAY=${SNOGRAY:-snogray}
+SNOGDIFF=${SNOGDIFF:-snogdiff}
+SNOGCVT=${SNOGCVT:-snogcvt}
+PBRT=${PBRT:-pbrt}
+PBRT_OPTIONS=${PBRT_OPTIONS:-}
+
+quiet=no
+update_ref_images=no
+log_dir=''
+
+out_ext=exr
+reference_ext=exr
+
+me="$(basename $0)"
+
+optarg () {
+  opt="$1"
+}
+
+read_params_file () {
+  params_file="$1"
+  if test x"$params_file" != x; then
+    if test -r "$params_file"; then
+      . "$params_file" || exit 3
+    else
+      echo 1>&2 "$me: $params_file: Parameter file not found"
+      exit 2
+    fi
+  fi
+}
+
+while :; do
+  case "$1" in
+    -q|--quiet)
+      quiet=yes; shift;;
+    -p|--params|--params-file)
+      read_params_file "$2"; shift 2;;
+    -p*)
+      read_params_file "$(echo "$1" | sed 's@^..@@')"; shift;;
+    --params=*|--params-file=*)
+      read_params_file "$(echo "$1" | sed 's@^.*=@@')"; shift;;
+    -l|--log-dir)
+      log_dir="$2"; shift 2;;
+    -l*)
+      log_dir=$(echo "$1" | sed 's@^..@@'); shift;;
+    --log-dir=*)
+      log_dir=$(echo "$1" | sed 's@^.*=@@'); shift;;
+    -*)
+      echo 1>&2 "$me: Unknown option '$1'"; exit 1;;
+    *=*)
+      eval "$1"; shift;;
+    *)
+      break;;
+  esac      
+done
+
+abs_filename () {
+  case "$1" in
+    /*)  echo "$1" ;;
+    */*) ( cd "$(dirname "$1")"; echo "$(pwd)/$(basename "$1")"; ) ;;
+    *)   echo "$(pwd)/$(basename "$1")" ;;
+  esac
+}
+
+# Find an executable called "$1", first searching directory "$2" if it
+# is non-empty, and then searching $PATH when appropriate (following the
+# same rules as the shell), print its absolute path on stdout, and
+# return success.  If no executable is found, return failure.
+#
+find_exec () {
+  prog=$1
+  case "$prog" in
+    */*)
+      prog="$(abs_filename "$prog")"
+      if test -x "$prog"; then
+	echo "$prog"
+	return 0
+      fi
+      ;;
+    *)
+      path="$PATH"
+      test x"$2" = x || path="$2:$path"
+      IFS=":"
+      for dir in $path; do
+	file="$dir/$prog"
+	if test -x "$file"; then
+	  echo "$file"
+	  return 0
+	fi
+      done
+      ;;
+  esac
+  return 1
+}
+
+locate_prog () {
+  varname="$1"
+  extra_search_dir="$2"
+  eval val='$'"$varname"
+  new_val="$(find_exec "$val" "$extra_search_dir")" || {
+    echo 1>&2 "$me: Program '$val' not found"
+    echo 1>&2 "$me: Use the variable $varname to specify an explicit name"
+    exit 6
+  }
+  eval "$varname='$new_val'"
+}
+
+locate_prog SNOGRAY
+snogray_dir="$(dirname "$SNOGRAY")"
+
+locate_prog SNOGDIFF "$snogray_dir"
+locate_prog SNOGCVT "$snogray_dir"
+locate_prog PBRT
+
+tmpdir="/tmp/,$me-$$"
+cleanup_cmd="rm -rf '$tmpdir'"
+for sig in 1 2 3 13 15; do
+  trap "$cleanup_cmd; trap $sig; kill -$sig \$\$" $sig;
+done
+trap "$cleanup_cmd" 0
+mkdir "$tmpdir" || exit 4
+
+rundir="$tmpdir/run"
+mkdir "$rundir" || exit 5
+
+outdir="$tmpdir/out"
+mkdir "$outdir" || exit 6
+
+if test x"$log_dir" != x; then
+  if test -d "$log_dir"; then
+    rm -f "$log_dir"/*
+  else
+    mkdir "$log_dir" || exit 8
+  fi
+fi
+
+
+# Run snogray on the test scene file $1, placing the output into $2.
+# Remaining arguments are passed to snogray.  Return status is 0 for a
+# successful run, and non-zero if snogray failed.
+#
+run_snogray ()
+{
+  scene="$1"; shift
+  output="$1"; shift
+
+  (
+    # Snogray prefers to run in the build directory when not
+    # installed, and it's harmless to run in the binary directory
+    # otherwise, so just chdir there.
+    #
+    cd "$snogray_dir"
+
+    "$SNOGRAY" 2>&1 "$@" "$scene" "$output"
+  )
+}
+
+# Run pbrt on the test scene file $1, placing the output into $2.
+# Remaining arguments are passed to pbrt.  Return status is 0 for a
+# successful run, and non-zero if pbrt failed.
+#
+run_pbrt ()
+{
+  scene="$1"; shift
+  output="$1"; shift
+
+  rm -f "$rundir"/*
+
+  (
+    cd "$rundir"
+    "$PBRT" 2>&1 $PBRT_OPTIONS "$@" "$scene"
+    pbrt_output_file="$(ls *.exr | head -n1)"
+    if test -r "$pbrt_output_file"; then
+      cp 2>&1 "$pbrt_output_file" "$output"
+    else
+      echo "No PBRT output file found!"
+      return 1
+    fi
+  )
+}
+
+# Invoke a shell-script on the test scene file $1, placing the output
+# into $2.  Return status is 0 for a successful run, and non-zero if
+# snogray failed.
+#
+# The first argument to the shell script is the shell-script filename,
+# and the second is the name to which to write the output image.
+#
+# The following environment variables are defined when running a
+# script; all file/directory names are fully-specified and absolute:
+#
+#  SNOGRAY	snogray executable
+#  SNOGCVT	snogcvt executable
+#  SNOGDIFF	snogdiff executable
+#  SNOGRAY_DIR  Directory where snogray executable is located
+#
+#  PBRT		PBRT executable
+#
+#  SNOGRAY_TEST_SCRIPT		Test shell-script being executed
+#  SNOGRAY_TEST_SCRIPT_DIR	The test shell-script's directory
+#  SNOGRAY_TEST_RUN_DIR		A temporary directory available for scratch use
+#  SNOGRAY_TEST_OUT_DIR		The directory in which results should be placed
+#
+run_sh_script ()
+{
+  script="$1"; shift
+  output="$1"; shift
+
+  rm -f "$rundir"/*
+
+  (
+    cd "$rundir"
+    SNOGRAY_DIR="$snogray_dir"
+    SNOGRAY_TEST_SCRIPT="$script"
+    SNOGRAY_TEST_SCRIPT_DIR="$(dirname "$script")"
+    SNOGRAY_TEST_RUN_DIR="$rundir"
+    SNOGRAY_TEST_OUT_DIR="$outdir"
+    SNOGRAY_TEST_QUIET="$quiet"
+    export SNOGRAY SNOGCVT SNOGDIFF PBRT SNOGRAY_DIR
+    export SNOGRAY_TEST_SCRIPT SNOGRAY_TEST_SCRIPT_DIR
+    export SNOGRAY_TEST_OUT_DIR SNOGRAY_TEST_RUN_DIR SNOGRAY_TEST_QUIET
+    echo /bin/sh 2>&1 "$script" "$output"
+  )
+}
+
+format_failure_log ()
+{
+  echo "$1 execution failed:"
+  echo "   ----- START LOG -----"
+  echo "$2" | sed 's@^@   @'
+  echo "   ----- END LOG -----"
+}
+
+pfx_lines ()
+{
+  echo "$2" | sed "s@^@$1@g"
+}
+
+images_differ ()
+{
+  if /usr/local/src/pbrt-v2/src/bin/exrdiff -d 0.02 >/dev/null "$1" "$2"; then
+    return 1
+  else
+    return 0
+  fi
+}
+
+ref_image_differs ()
+{
+  false
+}
+
+update_ref_image ()
+{
+  echo "update_ref_image '$1' '$2'"
+}
+
+get_param ()
+{
+  param_name="$1"; shift
+  param_file="$1"; shift
+  param_default="$1"; shift
+
+  if test -r "$param_file"; then
+    param_grep="$(grep "^$param_name *=" "$param_file")"
+    if test $? -eq 0; then
+      echo "$param_grep" | sed -e 's/^[^=]*= *//' -e q
+      return 0
+    fi
+  fi
+
+  echo "$param_default"
+}
+
+run_one_test ()
+{
+  test="$(abs_filename "$1")"
+  #test_name="$(basename "$test" | sed 's@^\(.*\)[.][^./]*$@\1@')"
+  test_name="$(basename "$test")"
+  test_dir="$(dirname "$test")"
+
+  case "$test" in
+    *.lua|*.pbrt|*.sh)
+      failures=''
+      pbrtout=''
+
+      testout="$outdir/$test_name.snogray-out.$out_ext"
+
+      param_file="$test_dir/$test_name.params"
+
+      if test $(get_param ignore "$param_file" no) = yes; then
+	return 0
+      fi
+
+      if test x"$refdir" != x; then
+	ref_image="$refdir/$test.$reference_ext"
+      else
+	ref_image=''
+      fi
+
+      printf "  $test_name..."
+
+      case "$test" in
+	*.lua|*.pbrt)
+	  testlog="$(run_snogray "$test" "$testout")" ;;
+	*.sh)
+	  testlog="$(run_sh_script "$test" "$testout")" ;;
+      esac
+
+      if test $? -eq 0; then
+	# snogray succeeded
+	
+	# See if there's a reference image, and compare against it
+	#
+	if test x"$ref_image" != x && test -r "$ref_image"; then
+	  if ref_image_differs "$testout" "$ref_image"; then
+	    failures="$(echo "${failures}Reference image differs: $ref_image")"
+	  fi
+	fi
+
+	# Test PBRT scene to compare against, which will be run using
+	# PBRT.  This will have no effect unless it is a file ending
+	# with ".pbrt".  By default this is the same as the input
+	# file.
+	#
+	pbrt_test="$test_dir/$(get_param pbrt_reference_scene "$param_file" "$test_name")"
+
+	# Maybe run PBRT and compare its result too
+	#
+	case "$pbrt_test" in
+	  *.pbrt)
+	    pbrtout="$outdir/${test_name}.pbrt-out.$out_ext"
+
+	    pbrtlog="$(run_pbrt "$pbrt_test" "$pbrtout")"
+
+	    if test $? = 0; then
+	      # PBRT succeeded
+	      if images_differ "$testout" "$pbrtout"; then
+		failures="$(echo "${failures}PBRT output differs")"
+	      fi
+	    else
+	      # PBRT failed
+	      failures="$failures$(format_failure_log PBRT "$pbrtlog")"
+	    fi
+	    ;;
+	esac
+      else
+	# snogray failed
+	failures="$(echo "${failures}$(format_failure_log snogray "$testlog")")"
+      fi
+
+      if test x"$failures" = x; then
+	echo "OK"
+
+	if test x"$ref_image" != x; then
+	  case $update_ref_images in
+	    always)
+	      update_ref_image "$testout" "$ref_image" ;;
+	    new_only)
+	      test -r "$ref_image" || update_ref_image "$testout" "$ref_image";;
+	  esac
+	fi
+      else
+	echo "FAILED:"
+	echo "$(pfx_lines "     " "$failures")"
+
+	if test x"$log_dir" != x; then
+	  echo "$failures" > "$outdir/$test_name.log"
+	  test -r "$testout" && cp "$testout" "$log_dir"
+	  test -r "$pbrtout" && cp "$pbrtout" "$log_dir"
+	fi
+      fi
+      ;;
+  esac
+}
+
+run_tests ()
+{
+  for test in "$@"; do
+    if test -d "$test"; then
+      run_tests "$test"/*
+
+      if test -r "$test/SUBDIRS"; then
+	run_tests $(cat "$test/SUBDIRS")
+      fi
+    else
+      run_one_test "$test"
+    fi
+  done
+}
+
+run_tests "$@"
