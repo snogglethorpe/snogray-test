@@ -306,6 +306,29 @@ get_param ()
   echo "$param_default"
 }
 
+# Search for parameters called "$1" in the parameter file "$2", and
+# print their value if found, one per line; otherwise just print "$3.
+# If there are multiple such parameters, all are printed.
+#
+# Parameters are lines of the form "NAME = VALUE" or "NAME: VALUE",
+# with VALUE being the rest of the line, and any amount of whitespace
+# being ignore.
+#
+get_params ()
+{
+  param_name="$1"
+  param_file="$2"
+  param_default="$3"
+
+  if test -r "$param_file" && grep -l >/dev/null "^$param_name *[=:]" "$param_file"
+  then
+    sed -n -e "/^$param_name[ 	]*[=:]/s/^[^=:]*[=:][ 	]*//p" "$param_file"
+    return 0
+  fi
+
+  echo "$param_default"
+}
+
 run_one_test ()
 {
   test="$(abs_filename "$1")"
