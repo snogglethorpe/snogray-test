@@ -402,7 +402,9 @@ run_one_test ()
 	      # PBRT succeeded
 	      if images_differ "$testout" "$pbrtout"; then
 		failures="$(cat_lines "$failures" "PBRT output differs")"
-		test -r "$pbrtout" && cp "$pbrtout" "$log_dir"
+		if test x"$log_dir" != x && test -r "$pbrtout"; then
+		  cp "$pbrtout" "$log_dir"
+		fi
 	      fi
 	    else
 	      # PBRT failed
@@ -432,7 +434,9 @@ run_one_test ()
 	  if test $? = 0; then
 	    if images_differ "$testout" "$compare_out"; then
 	      failures="$(cat_lines "$failures" "Comparison output '$compare' differs")"
-	      test -r "$compare_out" && cp "$compare_out" "$log_dir"
+	      if test x"$log_dir" != x && test -r "$compare_out"; then
+		cp "$compare_out" "$log_dir"
+	      fi
 	    fi
 	  fi
 	done
