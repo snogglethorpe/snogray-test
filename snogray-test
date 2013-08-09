@@ -38,6 +38,8 @@ reference_ext=exr
 
 me="$(basename $0)"
 
+AWK=/usr/bin/nawk
+
 optarg () {
   opt="$1"
 }
@@ -280,54 +282,85 @@ update_ref_image ()
   echo "update_ref_image '$1' '$2'"
 }
 
-# Search for a parameter called "$1" in the parameter file "$2", and
-# print its value if found, otherwise just print "$3.  If there are
-# multiple such parameters, only the first printed.
+# Search for a parameter called "$1" and print its value if found,
+# otherwise just print "$3".  The parameter is searched for in two
+# locations: a parameter file "$2.params", and in the file "$2" itself;
+# when searching in "$2", the parameter specification must be preceded
+# by an appropiate comment delimiter, and the string "[test param]".
+#
+# If "$4" is "first", only the first matching parameter will be printed;
+# if it is "multiple", all matchign parameters will be printed.
 #
 # Parameters are lines of the form "NAME = VALUE" or "NAME: VALUE",
 # with VALUE being the rest of the line, and any amount of whitespace
 # being ignore.
 #
-get_param ()
+_get_param ()
 {
-  param_name="$1"
-  param_file="$2"
-  param_default="$3"
+  param_extra_file="$2.params"
+  test -r "$param_extra_file" || param_extra_file=''
 
-  if test -r "$param_file" && grep -l >/dev/null "^$param_name *[=:]" "$param_file"
-  then
-    sed -n -e "/^$param_name[ 	]*[=:]/{" \
-      -e   's/^[^=:]*[=:][ 	]*//p' \
-      -e   q \
-      -e '}' "$param_file"
-      return 0
-  fi
+  $AWK '
+  BEGIN {
+    param_name="'"$1"'"
+    param_file="'"$2"'"
+    param_default="'"$3"'"
+    multiple=("'"$4"'" == "multiple" ? 1 : 0)
 
-  echo "$param_default"
+    ws = "[ 	]*"
+    param_line_magic_token_regexp = "\\[" ws "test param" ws "\\]"
+
+    matched = 0
+  }
+
+  function config_for_file(filename  ,token)
+  {
+    valid_line_regexp = "^"
+    param_match_regexp = ""
+
+    if (filename !~ /[.]params$/) {
+      if (filename ~ /[.](sh|pbrt)$/)
+	comment_prefix = "#"
+      else if (filename ~ /[.]lua$/)
+	comment_prefix = "--"
+      else
+	comment_prefix = ""
+
+      valid_line_regexp = valid_line_regexp ws comment_prefix
+      param_match_regexp = ws param_line_magic_token_regexp
+    }
+
+    param_match_regexp = valid_line_regexp param_match_regexp ws param_name ws "[=:]" ws
+  }
+
+  {
+    if (FILENAME != prev_filename) {
+      config_for_file(FILENAME)
+      prev_filename = FILENAME
+    }
+  }
+
+  $0 ~ /^[ 	]*$/ { next; }
+  $0 !~ valid_line_regexp { exit (1) }
+
+  $0 ~ param_match_regexp {
+    matched = 1
+    sub (param_match_regexp, "")
+    print $0
+
+    if (! multiple)
+      exit (0)
+  }
+
+  END {
+    if (! matched)
+      print param_default
+    exit (matched ? 0 : 1)
+  }' ${param_extra_file:+"$param_extra_file"} "$2"
 }
 
-# Search for parameters called "$1" in the parameter file "$2", and
-# print their value if found, one per line; otherwise just print "$3.
-# If there are multiple such parameters, all are printed.
-#
-# Parameters are lines of the form "NAME = VALUE" or "NAME: VALUE",
-# with VALUE being the rest of the line, and any amount of whitespace
-# being ignore.
-#
-get_params ()
-{
-  param_name="$1"
-  param_file="$2"
-  param_default="$3"
-
-  if test -r "$param_file" && grep -l >/dev/null "^$param_name *[=:]" "$param_file"
-  then
-    sed -n -e "/^$param_name[ 	]*[=:]/s/^[^=:]*[=:][ 	]*//p" "$param_file"
-    return 0
-  fi
-
-  echo "$param_default"
-}
+get_param () { _get_param "$1" "$2" "$3" first; }
+get_params () { _get_param "$1" "$2" "$3" multiple; }
 
 # Print all arguments, each followed with a newline if it is non-empty.
 #
@@ -351,9 +384,7 @@ run_one_test ()
 
       testout="$outdir/$test_name.snogray-out.$out_ext"
 
-      param_file="$test_dir/$test_name.params"
-
-      if test $(get_param ignore "$param_file" no) = yes; then
+      if test $(get_param ignore "$test" no) = yes; then
 	return 0
       fi
 
@@ -388,7 +419,7 @@ run_one_test ()
 	# with ".pbrt".  By default this is the same as the input
 	# file.
 	#
-	pbrt_test="$test_dir/$(get_param pbrt_reference "$param_file" "$test_name")"
+	pbrt_test="$test_dir/$(get_param pbrt_reference "$test" "$test_name")"
 
 	# Maybe run PBRT and compare its result too
 	#
@@ -416,7 +447,7 @@ run_one_test ()
 	# See if there are "compare_with" params, and if so, also run
 	# snogray on those, and compare the results
 	#
-	for compare in $(get_params compare_with "$param_file"); do
+	for compare in $(get_params compare_with "$test"); do
 	  compare_file="$test_dir/$compare"
 	  compare_out="$outdir/${test_name}.compare-out.$compare.$out_ext"
 
