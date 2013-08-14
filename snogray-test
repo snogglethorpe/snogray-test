@@ -160,7 +160,10 @@ mkdir "$outdir" || exit 6
 
 if test x"$log_dir" != x; then
   if test -d "$log_dir"; then
-    rm -f "$log_dir"/*
+    if test x"$(echo "$log_dir"/*)" != x"$log_dir/*"; then
+      echo 1>&2 "$me: $log_dir: Log directory is not empty"
+      exit 8
+    fi
   else
     mkdir "$log_dir" || exit 8
   fi
