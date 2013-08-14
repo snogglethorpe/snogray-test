@@ -273,7 +273,7 @@ pfx_lines ()
 
 images_differ ()
 {
-  if /usr/local/src/pbrt-v2/src/bin/exrdiff -d 0.02 >/dev/null "$1" "$2"; then
+  if $SNOGDIFF -d0.0005 -q "$1" "$2"; then
     return 1
   else
     return 0
