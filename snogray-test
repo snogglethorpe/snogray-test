@@ -176,18 +176,23 @@ fi
 #
 run_snogray ()
 {
-  scene="$1"; shift
-  output="$1"; shift
+  run_snogray_scene=$(abs_filename "$1")
+  run_snogray_output=$(abs_filename "$2")
+  shift 2
 
-  (
-    # Snogray prefers to run in the build directory when not
-    # installed, and it's harmless to run in the binary directory
-    # otherwise, so just chdir there.
-    #
-    cd "$snogray_dir"
+  if test ! -r "$run_snogray_output"; then
+    (
+      # Snogray prefers to run in the build directory when not
+      # installed, and it's harmless to run in the binary directory
+      # otherwise, so just chdir there.
+      #
+      cd "$snogray_dir"
 
-    "$SNOGRAY" 2>&1 "$@" "$scene" "$output"
-  )
+      "$SNOGRAY" 2>&1 "$@" "$run_snogray_scene" "$run_snogray_output"
+    )
+  else
+    echo 1>&2 "re-using snogray output: $run_snogray_output"
+  fi
 }
 
 # Run pbrt on the test scene file $1, placing the output into $2.
@@ -196,22 +201,27 @@ run_snogray ()
 #
 run_pbrt ()
 {
-  scene="$1"; shift
-  output="$1"; shift
+  run_pbrt_scene=$(abs_filename "$1")
+  run_pbrt_output=$(abs_filename "$2")
+  shift 2
 
-  rm -f "$rundir"/*
+  if test ! -r "$run_pbrt_output"; then
+    (
+      cd "$rundir"
+      rm -f *
 
-  (
-    cd "$rundir"
-    "$PBRT" 2>&1 $PBRT_OPTIONS "$@" "$scene"
-    pbrt_output_file="$(ls *.exr | head -n1)"
-    if test -r "$pbrt_output_file"; then
-      cp 2>&1 "$pbrt_output_file" "$output"
-    else
-      echo "No PBRT output file found!"
-      return 1
-    fi
-  )
+      "$PBRT" 2>&1 $PBRT_OPTIONS "$@" "$run_pbrt_scene"
+      run_pbrt_output_file=$(ls *.exr | head -n1)
+      if test -r "$run_pbrt_output_file"; then
+	cp 2>&1 "$run_pbrt_output_file" "$run_pbrt_output"
+      else
+	echo "No PBRT output file found!"
+	return 1
+      fi
+    )
+  else
+    echo 1>&2 "re-using pbrt output: $run_pbrt_output"
+  fi
 }
 
 # Invoke a shell-script on the test scene file $1, placing the output
@@ -238,24 +248,30 @@ run_pbrt ()
 #
 run_sh_script ()
 {
-  script="$1"; shift
-  output="$1"; shift
+  run_sh_script_script=$(abs_filename "$1")
+  run_sh_script_output=$(abs_filename "$2")
+  shift 2
 
-  rm -f "$rundir"/*
+  if test ! -r "$run_sh_script_output"; then
+    (
+      cd "$rundir"
+      rm -f *
 
-  (
-    cd "$rundir"
-    SNOGRAY_DIR="$snogray_dir"
-    SNOGRAY_TEST_SCRIPT="$script"
-    SNOGRAY_TEST_SCRIPT_DIR="$(dirname "$script")"
-    SNOGRAY_TEST_RUN_DIR="$rundir"
-    SNOGRAY_TEST_OUT_DIR="$outdir"
-    SNOGRAY_TEST_QUIET="$quiet"
-    export SNOGRAY SNOGCVT SNOGDIFF PBRT SNOGRAY_DIR
-    export SNOGRAY_TEST_SCRIPT SNOGRAY_TEST_SCRIPT_DIR
-    export SNOGRAY_TEST_OUT_DIR SNOGRAY_TEST_RUN_DIR SNOGRAY_TEST_QUIET
-    echo /bin/sh 2>&1 "$script" "$output"
-  )
+      SNOGRAY_DIR=$snogray_dir
+      SNOGRAY_TEST_RUN_SH_SCRIPT_SCRIPT=$run_sh_script_script
+      SNOGRAY_TEST_RUN_SH_SCRIPT_SCRIPT_DIR=$(dirname "$run_sh_script_script")
+      SNOGRAY_TEST_RUN_DIR=$rundir
+      SNOGRAY_TEST_OUT_DIR=$outdir
+      SNOGRAY_TEST_QUIET=$quiet
+      export SNOGRAY SNOGCVT SNOGDIFF PBRT SNOGRAY_DIR
+      export SNOGRAY_TEST_RUN_SH_SCRIPT_SCRIPT SNOGRAY_TEST_RUN_SH_SCRIPT_SCRIPT_DIR
+      export SNOGRAY_TEST_OUT_DIR SNOGRAY_TEST_RUN_DIR SNOGRAY_TEST_QUIET
+
+      echo /bin/sh 2>&1 "$run_sh_script_script" "$run_sh_script_output"
+    )
+  else
+    echo 1>&2 "re-using sh-script output: $run_sh_script_output"
+  fi
 }
 
 format_failure_log ()
@@ -378,19 +394,34 @@ cat_lines () {
   done
 }
 
-run_one_test ()
+# Print the name of an image output file of type "$1", for test name
+# "$2".  "$2" must be relative, but may contains subdirectories; a
+# corresponding subdiretory of the output directory is created in that
+# case.
+#
+output_file_name ()
 {
-  test="$(abs_filename "$1")"
-  #test_name="$(basename "$test" | sed 's@^\(.*\)[.][^./]*$@\1@')"
-  test_name="$(basename "$test")"
-  test_dir="$(dirname "$test")"
+  echo "$outdir/$1%$(echo "$2" | tr '/' '%').$3"
+}
+
+# Run test for relative filename "$2" in prefix "$1"
+run_test ()
+{
+  test=$1
+  test_name=$(basename "$test")
+  test_dir=$(dirname "$test")
+
+  if test ! -r "$test"; then
+    echo 1>&2 "$me: $test: No such file or directory"
+    exit 12;
+  fi
 
   case "$test" in
     *.lua|*.pbrt|*.sh)
       failures=''
       pbrtout=''
 
-      testout="$outdir/$test_name.snogray-out.$out_ext"
+      testout=$(output_file_name snogray-out "$test" "$out_ext")
 
       if test $(get_param ignore "$test" no) = yes; then
 	return 0
@@ -433,7 +464,7 @@ run_one_test ()
 	#
 	case "$pbrt_test" in
 	  *.pbrt)
-	    pbrtout="$outdir/${test_name}.pbrt-out.$out_ext"
+	    pbrtout=$(output_file_name pbrt-out "$test" "$out_ext")
 
 	    pbrtlog=$(run_pbrt "$pbrt_test" "$pbrtout")
 
@@ -457,18 +488,10 @@ run_one_test ()
 	#
 	for compare in $(get_params compare_with "$test"); do
 	  compare_file="$test_dir/$compare"
-	  compare_out="$outdir/${test_name}.compare-out.$compare.$out_ext"
+	  compare_out=$(output_file_name snogray-out "$test" "$out_ext")
 
-	  # Find or generate an image file to compare
-	  #
-	  compare_prev_output_file="$outdir/${compare}.snogray-out.$out_ext"
-	  if test -r "$compare_prev_output_file"; then
-	    # re-use previously generate output file for $compare
-	    cp "$compare_prev_output_file" "$compare_out"
-	  else
-	    # generate it
-	    compare_log="$(run_snogray "$compare_file" "$compare_out")"
-	  fi
+	  # generate it
+	  compare_log=$(run_snogray "$compare_file" "$compare_out")
 
 	  if test $? = 0; then
 	    if images_differ "$testout" "$compare_out"; then
@@ -501,7 +524,9 @@ run_one_test ()
 	echo "$(pfx_lines "     " "$failures")"
 
 	if test x"$log_dir" != x; then
-	  echo "$failures" > "$outdir/$test_name.log"
+	  faillog="$(output_file_name failures "$test" log)"
+	  echo "$failures" > "$faillog"
+	  cp "$faillog" "$log_dir"
 	  test -r "$testout" && cp "$testout" "$log_dir"
 	fi
       fi
@@ -509,19 +534,33 @@ run_one_test ()
   esac
 }
 
-run_tests ()
+# Run each argument, which must be relative to current directory, as a test.
+#
+run_test_or_dir ()
 {
-  for test in "$@"; do
-    if test -d "$test"; then
-      run_tests "$test"/*
+  run_test_or_dir_test="$1"
+  if test -d "$run_test_or_dir_test"; then
+    run_test_or_dir_test=$(no_trailing_slash "$run_test_or_dir_test")
 
-      if test -r "$test/SUBDIRS"; then
-	run_tests $(cat "$test/SUBDIRS")
+    echo "$run_test_or_dir_test:"
+
+    for run_test_or_dir_dir_entry in "$run_test_or_dir_test"/*; do
+      if ! test -d "$run_test_or_dir_dir_entry"; then
+	run_test "$run_test_or_dir_dir_entry"
       fi
-    else
-      run_one_test "$test"
+    done
+
+    if test -r "$run_test_or_dir_test/SUBDIRS"; then
+      for run_test_or_dir_subdir in $(cat "$run_test_or_dir_test/SUBDIRS"); do
+	# do in a sub-shell to avoid stomping on our variables in recursion
+	( run_test_or_dir "$run_test_or_dir_test/$run_test_or_dir_subdir" )
+      done
     fi
-  done
+  else
+    run_test "$run_test_or_dir_test"
+  fi
 }
 
-run_tests "$@"
+for top_level_arg in "$@"; do
+  run_test_or_dir "$top_level_arg"
+done
