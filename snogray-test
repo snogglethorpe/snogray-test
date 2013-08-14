@@ -36,16 +36,16 @@ log_dir=''
 out_ext=exr
 reference_ext=exr
 
-me="$(basename $0)"
+me=$(basename $0)
 
 AWK=/usr/bin/nawk
 
 optarg () {
-  opt="$1"
+  opt=$1
 }
 
 read_params_file () {
-  params_file="$1"
+  params_file=$1
   if test x"$params_file" != x; then
     if test -r "$params_file"; then
       . "$params_file" || exit 3
@@ -67,7 +67,7 @@ while :; do
     --params=*|--params-file=*)
       read_params_file "$(echo "$1" | sed 's@^.*=@@')"; shift;;
     -l|--log-dir)
-      log_dir="$2"; shift 2;;
+      log_dir=$2; shift 2;;
     -l*)
       log_dir=$(echo "$1" | sed 's@^..@@'); shift;;
     --log-dir=*)
@@ -98,14 +98,14 @@ find_exec () {
   prog=$1
   case "$prog" in
     */*)
-      prog="$(abs_filename "$prog")"
+      prog=$(abs_filename "$prog")
       if test -x "$prog"; then
 	echo "$prog"
 	return 0
       fi
       ;;
     *)
-      path="$PATH"
+      path=$PATH
       test x"$2" = x || path="$2:$path"
       IFS=":"
       for dir in $path; do
@@ -121,10 +121,10 @@ find_exec () {
 }
 
 locate_prog () {
-  varname="$1"
-  extra_search_dir="$2"
+  varname=$1
+  extra_search_dir=$2
   eval val='$'"$varname"
-  new_val="$(find_exec "$val" "$extra_search_dir")" || {
+  new_val=$(find_exec "$val" "$extra_search_dir") || {
     echo 1>&2 "$me: Program '$val' not found"
     echo 1>&2 "$me: Use the variable $varname to specify an explicit name"
     exit 6
@@ -133,7 +133,7 @@ locate_prog () {
 }
 
 locate_prog SNOGRAY
-snogray_dir="$(dirname "$SNOGRAY")"
+snogray_dir=$(dirname "$SNOGRAY")
 
 locate_prog SNOGDIFF "$snogray_dir"
 locate_prog SNOGCVT "$snogray_dir"
@@ -398,9 +398,9 @@ run_one_test ()
 
       case "$test" in
 	*.lua|*.pbrt)
-	  testlog="$(run_snogray "$test" "$testout")" ;;
+	  testlog=$(run_snogray "$test" "$testout") ;;
 	*.sh)
-	  testlog="$(run_sh_script "$test" "$testout")" ;;
+	  testlog=$(run_sh_script "$test" "$testout") ;;
       esac
 
       if test $? -eq 0; then
@@ -410,7 +410,7 @@ run_one_test ()
 	#
 	if test x"$ref_image" != x && test -r "$ref_image"; then
 	  if ref_image_differs "$testout" "$ref_image"; then
-	    failures="$(cat_lines "$failures" "Reference image differs: $ref_image")"
+	    failures=$(cat_lines "$failures" "Reference image differs: $ref_image")
 	  fi
 	fi
 
@@ -427,19 +427,19 @@ run_one_test ()
 	  *.pbrt)
 	    pbrtout="$outdir/${test_name}.pbrt-out.$out_ext"
 
-	    pbrtlog="$(run_pbrt "$pbrt_test" "$pbrtout")"
+	    pbrtlog=$(run_pbrt "$pbrt_test" "$pbrtout")
 
 	    if test $? = 0; then
 	      # PBRT succeeded
 	      if images_differ "$testout" "$pbrtout"; then
-		failures="$(cat_lines "$failures" "PBRT output differs")"
+		failures=$(cat_lines "$failures" "PBRT output differs")
 		if test x"$log_dir" != x && test -r "$pbrtout"; then
 		  cp "$pbrtout" "$log_dir"
 		fi
 	      fi
 	    else
 	      # PBRT failed
-	      failures="$(cat_lines "$failures" $(format_failure_log PBRT "$pbrtlog"))"
+	      failures=$(cat_lines "$failures" $(format_failure_log PBRT "$pbrtlog"))
 	    fi
 	    ;;
 	esac
@@ -464,7 +464,7 @@ run_one_test ()
 
 	  if test $? = 0; then
 	    if images_differ "$testout" "$compare_out"; then
-	      failures="$(cat_lines "$failures" "Comparison output '$compare' differs")"
+	      failures=$(cat_lines "$failures" "Comparison output '$compare' differs")
 	      if test x"$log_dir" != x && test -r "$compare_out"; then
 		cp "$compare_out" "$log_dir"
 	      fi
@@ -474,7 +474,7 @@ run_one_test ()
 
       else
 	# snogray failed
-	failures="$(cat_lines "$failures" "$(format_failure_log snogray "$testlog")")"
+	failures=$(cat_lines "$failures" "$(format_failure_log snogray "$testlog")")
       fi
 
       if test x"$failures" = x; then
