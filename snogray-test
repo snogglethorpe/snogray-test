@@ -30,11 +30,27 @@ PBRT=${PBRT:-pbrt}
 PBRT_OPTIONS=${PBRT_OPTIONS:-}
 
 quiet=no
-update_ref_images=no
+keep_temps=no
 log_dir=''
+
+# If "all", re-write all reference images; if "new", add references
+# images only where there is none already.
+#
+update_ref_images=no
 
 out_ext=exr
 reference_ext=exr
+
+# Options passed to snogcvt when creating reference images from output
+# images.  Normally this is just a "-sXX" size option to reduce the
+# size.
+#
+ref_image_snogcvt_opts='-s16'
+
+# Difference in average intensity within which images will be
+# considered identical.
+#
+image_delta_thresh='0.002'
 
 me=$(basename $0)
 
@@ -56,10 +72,38 @@ read_params_file () {
   fi
 }
 
+set_update_ref_images () {
+  case "$1" in
+    no|all|new)
+      update_ref_images="$1";;
+    *)
+      arg=$2
+      case "$arg" in
+	-u|--update-ref-images)
+	  ;;
+	-u*)
+	  arg="$(echo "$arg" | sed 's@^\(..\).*@\1@')";;
+	--update-ref-images=*)
+	  arg="$(echo "$arg" | sed 's@=.*@@')";;
+      esac
+      echo 1>&2 "$me: invalid argument to $arg option, '$1'"
+      echo 1>&2 "$me: valid arguments are 'no', 'new', and 'all'"
+      exit 3;;
+  esac
+}
+
 while :; do
   case "$1" in
     -q|--quiet)
       quiet=yes; shift;;
+    --keep-temps)
+      keep_temps=yes; shift;;
+    -u|--update-ref-images)
+      set_update_ref_images "$2" "$1"; shift 2;;
+    -u*)
+      set_update_ref_images "$(echo "$1" | sed 's@^..@@')" "$1"; shift;;
+    --update-ref-images=*)
+      set_update_ref_images "$(echo "$1" | sed 's@^.*=@@')" "$1"; shift;;
     -p|--params|--params-file)
       read_params_file "$2"; shift 2;;
     -p*)
@@ -145,11 +189,15 @@ locate_prog SNOGCVT "$snogray_dir"
 locate_prog PBRT
 
 tmpdir="/tmp/,$me-$$"
-cleanup_cmd="rm -rf '$tmpdir'"
-for sig in 1 2 3 13 15; do
-  trap "$cleanup_cmd; trap $sig; kill -$sig \$\$" $sig;
-done
-trap "$cleanup_cmd" 0
+if test $keep_temps = yes; then
+  echo "* Temporary files in '$tmpdir'"
+else
+  cleanup_cmd="echo rm -rf '$tmpdir'"
+  for sig in 1 2 3 13 15; do
+    trap "$cleanup_cmd; trap $sig; kill -$sig \$\$" $sig;
+  done
+  trap "$cleanup_cmd" 0
+fi
 mkdir "$tmpdir" || exit 4
 
 rundir="$tmpdir/run"
@@ -283,21 +331,39 @@ pfx_lines ()
 
 images_differ ()
 {
-  if $SNOGDIFF -d0.0005 -q "$1" "$2"; then
-    return 1
+  if $SNOGDIFF -q -d"$image_delta_thresh" "$1" "$2"; then
+    false
   else
-    return 0
+    true
   fi
 }
 
-ref_image_differs ()
+# $1 = test output file name
+make_ref_image ()
 {
-  false
+  make_ref_image_name="${1}-ref.$out_ext"
+  if test ! -r "$make_ref_image_name"; then
+    $SNOGCVT $ref_image_snogcvt_opts "$1" "$make_ref_image_name"
+  fi
+  echo "$make_ref_image_name"
 }
 
+# $1 = test output file name
+# $2 = old ref image file name
+ref_image_differs ()
+{
+  ref_image_differs_name=$(make_ref_image "$1")
+  images_differ "$ref_image_differs_name" "$2"
+}
+
+# $1 = test output file name
+# $2 = old ref image file name
 update_ref_image ()
 {
-  echo "update_ref_image '$1' '$2'"
+  update_ref_image_name=$(make_ref_image "$1")
+  update_ref_image_dir=$(dirname "$2")
+  test -d "$update_ref_image_dir" || mkdir "$update_ref_image_dir" || exit 35
+  cp "$update_ref_image_name" "$2"
 }
 
 # Search for a parameter called "$1" and print its value if found,
@@ -398,12 +464,17 @@ output_file_name ()
   echo "$outdir/$1%$(echo "$2" | tr '/' '%').$3"
 }
 
-# Run test for relative filename "$2" in prefix "$1"
+# Run test file "$1".  Files not having a snogray-supported filename
+# extension are simply igmored, except for ".sh", which is executed as
+# a shell script.
+#
 run_test ()
 {
   test=$1
   test_name=$(basename "$test")
   test_dir=$(dirname "$test")
+
+  refdir="$test_dir/REFS"
 
   if test ! -r "$test"; then
     echo 1>&2 "$me: $test: No such file or directory"
@@ -422,7 +493,7 @@ run_test ()
       fi
 
       if test x"$refdir" != x; then
-	ref_image="$refdir/$test.$reference_ext"
+	ref_image="$refdir/$test_name.$reference_ext"
       else
 	ref_image=''
       fi
@@ -441,9 +512,18 @@ run_test ()
 	
 	# See if there's a reference image, and compare against it
 	#
-	if test x"$ref_image" != x && test -r "$ref_image"; then
+	if test x"$ref_image" != x	\
+	  && test -r "$ref_image"	\
+	  && test $update_ref_images != all
+	then
 	  if ref_image_differs "$testout" "$ref_image"; then
 	    failures=$(cat_lines "$failures" "Reference image differs: $ref_image")
+	    if test x"$log_dir" != x; then
+	      new_ref_image=$(make_ref_image "$test")
+	      if test -r "$new_ref_image"; then
+		cp "$new_ref_image" "$log_dir"
+	      fi
+	    fi
 	  fi
 	fi
 
@@ -507,9 +587,9 @@ run_test ()
 
 	if test x"$ref_image" != x; then
 	  case $update_ref_images in
-	    always)
+	    all)
 	      update_ref_image "$testout" "$ref_image" ;;
-	    new_only)
+	    new)
 	      test -r "$ref_image" || update_ref_image "$testout" "$ref_image";;
 	  esac
 	fi
