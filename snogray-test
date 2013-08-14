@@ -190,8 +190,6 @@ run_snogray ()
 
       "$SNOGRAY" 2>&1 "$@" "$run_snogray_scene" "$run_snogray_output"
     )
-  else
-    echo 1>&2 "re-using snogray output: $run_snogray_output"
   fi
 }
 
@@ -219,8 +217,6 @@ run_pbrt ()
 	return 1
       fi
     )
-  else
-    echo 1>&2 "re-using pbrt output: $run_pbrt_output"
   fi
 }
 
@@ -269,8 +265,6 @@ run_sh_script ()
 
       echo /bin/sh 2>&1 "$run_sh_script_script" "$run_sh_script_output"
     )
-  else
-    echo 1>&2 "re-using sh-script output: $run_sh_script_output"
   fi
 }
 
