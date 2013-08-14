@@ -89,6 +89,11 @@ abs_filename () {
   esac
 }
 
+no_trailing_slash () {
+  echo "$1" | sed 's@\([^/]\)/*$@\1@'
+}
+
+
 # Find an executable called "$1", first searching directory "$2" if it
 # is non-empty, and then searching $PATH when appropriate (following the
 # same rules as the shell), print its absolute path on stdout, and
