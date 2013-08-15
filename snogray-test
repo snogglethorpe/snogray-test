@@ -354,6 +354,7 @@ pfx_lines ()
   echo "$2" | sed "s@^@$1@g"
 }
 
+# "$1", "$2" = images to compare
 images_differ ()
 {
   if $SNOGDIFF 2>/dev/null -q -d"$image_delta_thresh" "$1" "$2"; then
@@ -361,6 +362,12 @@ images_differ ()
   else
     true
   fi
+}
+
+# "$1", "$2" = images to compare
+image_diff ()
+{
+  $SNOGDIFF 2>&1 "$1" "$2"
 }
 
 # $1 = test output file name
@@ -384,7 +391,7 @@ ref_image_differs ()
 # $2 = old ref image file name
 ref_image_diff ()
 {
-  $SNOGDIFF 2>&1 "$(make_ref_image "$1")" "$2"
+  image_diff "$(make_ref_image "$1")" "$2"
 }
 
 # $1 = test output file name
@@ -570,7 +577,8 @@ run_test ()
 	    if test $? = 0; then
 	      # PBRT succeeded
 	      if images_differ "$testout" "$pbrtout"; then
-		failures=$(cat_lines "$failures" "PBRT output differs")
+		failures=$(cat_lines "$failures" "PBRT output differs:")
+		failures=$(cat_lines "$failures" "  $(image_diff "$testout" "$pbrtout")")
 		copy_to_log_dir "$pbrtout"
 	      fi
 	    else
