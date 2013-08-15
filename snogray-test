@@ -342,7 +342,7 @@ pfx_lines ()
 
 images_differ ()
 {
-  if $SNOGDIFF -q -d"$image_delta_thresh" "$1" "$2"; then
+  if $SNOGDIFF 2>/dev/null -q -d"$image_delta_thresh" "$1" "$2"; then
     false
   else
     true
