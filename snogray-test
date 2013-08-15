@@ -368,6 +368,13 @@ ref_image_differs ()
 
 # $1 = test output file name
 # $2 = old ref image file name
+ref_image_diff ()
+{
+  $SNOGDIFF 2>&1 "$(make_ref_image "$1")" "$2"
+}
+
+# $1 = test output file name
+# $2 = old ref image file name
 update_ref_image ()
 {
   update_ref_image_name=$(make_ref_image "$1")
@@ -526,6 +533,7 @@ run_test ()
 	then
 	  if ref_image_differs "$testout" "$ref_image"; then
 	    failures=$(cat_lines "$failures" "Reference image differs: $ref_image")
+	    failures=$(cat_lines "$failures" "  $(ref_image_diff "$testout" "$ref_image")")
 	    copy_to_log_dir "$(make_ref_image "$testout")"
 	  fi
 	fi
