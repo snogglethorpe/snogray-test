@@ -235,9 +235,25 @@ copy_to_log_dir ()
 #
 run_snogray ()
 {
+  # process rendering options
+  run_snogray_clamp=no
+  while :; do
+    case "$1" in
+      --clamp) run_snogray_clamp=yes; shift;;
+      -*) shift;;
+      *) break;;
+    esac
+  done
+
   run_snogray_scene="$1"
   run_snogray_output="$2"
   shift 2
+
+  if test $run_snogray_clamp = yes; then
+    run_snogray_unclamped_output=$(echo "$run_snogray_output" | sed 's@\([.][^.]*\)$@-unclamped\1@')
+  else
+    run_snogray_unclamped_output=$run_snogray_output
+  fi
 
   if test ! -r "$run_snogray_output"; then
     (
@@ -255,8 +271,11 @@ run_snogray ()
 	done
       fi
 
+      $SNOGRAY 2>&1 "$@" $run_snogray_opts "$run_snogray_scene" "$run_snogray_unclamped_output"
 
-      "$SNOGRAY" 2>&1 "$@" $run_snogray_opts "$run_snogray_scene" "$run_snogray_output"
+      if test x"$run_snogray_unclamped_output" != x"$run_snogray_output"; then
+	$SNOGCVT --preclamp=1 "$run_snogray_unclamped_output" "$run_snogray_output"
+      fi
     )
   fi
 }
@@ -267,9 +286,25 @@ run_snogray ()
 #
 run_pbrt ()
 {
+  # process rendering options
+  run_pbrt_clamp=no
+  while :; do
+    case "$1" in
+      --clamp) run_pbrt_clamp=yes; shift;;
+      -*) shift;;
+      *) break;;
+    esac
+  done
+
   run_pbrt_scene=$(abs_filename "$1")
   run_pbrt_output=$(abs_filename "$2")
   shift 2
+
+  if test $run_pbrt_clamp = yes; then
+    run_pbrt_unclamped_output=$(echo "$run_pbrt_output" | sed 's@\([.][^.]*\)$@-unclamped\1@')
+  else
+    run_pbrt_unclamped_output=$run_pbrt_output
+  fi
 
   if test ! -r "$run_pbrt_output"; then
     (
@@ -279,7 +314,11 @@ run_pbrt ()
       "$PBRT" 2>&1 $PBRT_OPTIONS "$@" "$run_pbrt_scene"
       run_pbrt_output_file=$(ls *.exr | head -n1)
       if test -r "$run_pbrt_output_file"; then
-	cp 2>&1 "$run_pbrt_output_file" "$run_pbrt_output"
+	cp 2>&1 "$run_pbrt_output_file" "$run_pbrt_unclamped_output"
+
+	if test x"$run_pbrt_unclamped_output" != x"$run_pbrt_output"; then
+	  $SNOGCVT --preclamp=1 "$run_pbrt_unclamped_output" "$run_pbrt_output"
+	fi
       else
 	echo "No PBRT output file found!"
 	return 1
@@ -518,7 +557,19 @@ run_test ()
     *.lua|*.pbrt|*.sh)
       failures=''
       pbrtout=''
+
+      # make a local copy as it can be configured
       image_compare_thresh=$(get_param compare_threshold "$test" "$default_image_delta_thresh")
+
+      # "options" passed to rendering test functions
+      render_options=''
+
+      # See if the users wants output files clamped (which is
+      # sometimes necessary to keep comparisons sane for certain
+      # images)
+      if test x"$(get_param clamp_output "$test" no)" = xyes; then
+	render_options="--clamp"
+      fi
 
       testout=$(output_file_name snogray-out "$test" "$out_ext")
 
@@ -536,9 +587,9 @@ run_test ()
 
       case "$test" in
 	*.lua|*.pbrt)
-	  testlog=$(run_snogray "$test" "$testout") ;;
+	  testlog=$(run_snogray $render_options "$test" "$testout") ;;
 	*.sh)
-	  testlog=$(run_sh_script "$test" "$testout") ;;
+	  testlog=$(run_sh_script $render_options "$test" "$testout") ;;
       esac
 
       if test $? -eq 0; then
@@ -571,7 +622,7 @@ run_test ()
 	  *.pbrt)
 	    pbrtout=$(output_file_name pbrt-out "$test" "$out_ext")
 
-	    pbrtlog=$(run_pbrt "$pbrt_test" "$pbrtout")
+	    pbrtlog=$(run_pbrt $render_options "$pbrt_test" "$pbrtout")
 
 	    if test $? = 0; then
 	      # PBRT succeeded
