@@ -363,8 +363,7 @@ make_ref_image ()
 # $2 = old ref image file name
 ref_image_differs ()
 {
-  ref_image_differs_name=$(make_ref_image "$1")
-  images_differ "$ref_image_differs_name" "$2"
+  images_differ "$(make_ref_image "$1")" "$2"
 }
 
 # $1 = test output file name
