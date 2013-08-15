@@ -235,8 +235,8 @@ copy_to_log_dir ()
 #
 run_snogray ()
 {
-  run_snogray_scene=$(abs_filename "$1")
-  run_snogray_output=$(abs_filename "$2")
+  run_snogray_scene="$1"
+  run_snogray_output="$2"
   shift 2
 
   if test ! -r "$run_snogray_output"; then
@@ -246,20 +246,15 @@ run_snogray ()
 
       if test -r "$run_snogray_test_dir/PRELOADS"; then
 	for run_snogray_preload in $(cat "$run_snogray_test_dir/PRELOADS"); do
-	  run_snogray_opts="$run_snogray_opts --preload=$(abs_filename "$run_snogray_test_dir/$run_snogray_preload")"
+	  run_snogray_opts="$run_snogray_opts --preload=$run_snogray_test_dir/$run_snogray_preload"
 	done
       fi
       if test -r "$run_snogray_test_dir/POSTLOADS"; then
 	for run_snogray_postload in $(cat "$run_snogray_test_dir/POSTLOADS"); do
-	  run_snogray_opts="$run_snogray_opts --postload=$(abs_filename "$run_snogray_test_dir/$run_snogray_postload")"
+	  run_snogray_opts="$run_snogray_opts --postload=$run_snogray_test_dir/$run_snogray_postload"
 	done
       fi
 
-      # Snogray prefers to run in the build directory when not
-      # installed, and it's harmless to run in the binary directory
-      # otherwise, so just chdir there.
-      #
-      cd "$snogray_dir"
 
       "$SNOGRAY" 2>&1 "$@" $run_snogray_opts "$run_snogray_scene" "$run_snogray_output"
     )
