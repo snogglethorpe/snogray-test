@@ -256,27 +256,25 @@ run_snogray ()
   fi
 
   if test ! -r "$run_snogray_output"; then
-    (
-      run_snogray_test_dir=$(dirname "$run_snogray_scene")
-      run_snogray_opts=''
+    run_snogray_test_dir=$(dirname "$run_snogray_scene")
+    run_snogray_opts=''
 
-      if test -r "$run_snogray_test_dir/PRELOADS"; then
-	for run_snogray_preload in $(cat "$run_snogray_test_dir/PRELOADS"); do
-	  run_snogray_opts="$run_snogray_opts --preload=$run_snogray_test_dir/$run_snogray_preload"
-	done
-      fi
-      if test -r "$run_snogray_test_dir/POSTLOADS"; then
-	for run_snogray_postload in $(cat "$run_snogray_test_dir/POSTLOADS"); do
-	  run_snogray_opts="$run_snogray_opts --postload=$run_snogray_test_dir/$run_snogray_postload"
-	done
-      fi
+    if test -r "$run_snogray_test_dir/PRELOADS"; then
+      for run_snogray_preload in $(cat "$run_snogray_test_dir/PRELOADS"); do
+	run_snogray_opts="$run_snogray_opts --preload=$run_snogray_test_dir/$run_snogray_preload"
+      done
+    fi
+    if test -r "$run_snogray_test_dir/POSTLOADS"; then
+      for run_snogray_postload in $(cat "$run_snogray_test_dir/POSTLOADS"); do
+	run_snogray_opts="$run_snogray_opts --postload=$run_snogray_test_dir/$run_snogray_postload"
+      done
+    fi
 
-      $SNOGRAY 2>&1 "$@" $run_snogray_opts "$run_snogray_scene" "$run_snogray_unclamped_output"
+    $SNOGRAY 2>&1 "$@" $run_snogray_opts "$run_snogray_scene" "$run_snogray_unclamped_output"
 
-      if test x"$run_snogray_unclamped_output" != x"$run_snogray_output"; then
-	$SNOGCVT --preclamp=1 "$run_snogray_unclamped_output" "$run_snogray_output"
-      fi
-    )
+    if test x"$run_snogray_unclamped_output" != x"$run_snogray_output"; then
+      $SNOGCVT --preclamp=1 "$run_snogray_unclamped_output" "$run_snogray_output"
+    fi
   fi
 }
 
