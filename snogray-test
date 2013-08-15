@@ -466,13 +466,11 @@ cat_lines () {
 }
 
 # Print the name of an image output file of type "$1", for test name
-# "$2".  "$2" must be relative, but may contains subdirectories; a
-# corresponding subdiretory of the output directory is created in that
-# case.
+# "$2", with extension "$3".
 #
 output_file_name ()
 {
-  echo "$outdir/$1%$(echo "$2" | tr '/' '%').$3"
+  echo "$outdir/$(basename "$2")@$1@$(echo "$(dirname "$2")" | tr '/' '%')@.$3"
 }
 
 # Run test file "$1".  Files not having a snogray-supported filename
