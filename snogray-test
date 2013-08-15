@@ -39,7 +39,7 @@ log_dir=''
 update_ref_images=no
 
 out_ext=exr
-reference_ext=exr
+ref_ext=exr
 
 # Options passed to snogcvt when creating reference images from output
 # images.  Normally this is just a "-sXX" size option to reduce the
@@ -374,7 +374,7 @@ image_diff ()
 # $1 = test output file name
 make_ref_image ()
 {
-  make_ref_image_name="${1}-ref.$out_ext"
+  make_ref_image_name="${1}-ref.$ref_ext"
   if test ! -r "$make_ref_image_name"; then
     $SNOGCVT $ref_image_snogcvt_opts "$1" "$make_ref_image_name"
   fi
@@ -532,7 +532,7 @@ run_test ()
       fi
 
       if test x"$refdir" != x; then
-	ref_image="$refdir/$test_name.$reference_ext"
+	ref_image="$refdir/$test_name.$ref_ext"
       else
 	ref_image=''
       fi
