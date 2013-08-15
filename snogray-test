@@ -192,7 +192,7 @@ tmpdir="/tmp/,$me-$$"
 if test $keep_temps = yes; then
   echo "* Temporary files in '$tmpdir'"
 else
-  cleanup_cmd="echo rm -rf '$tmpdir'"
+  cleanup_cmd="rm -rf '$tmpdir'"
   for sig in 1 2 3 13 15; do
     trap "$cleanup_cmd; trap $sig; kill -$sig \$\$" $sig;
   done
