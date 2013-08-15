@@ -148,7 +148,7 @@ find_exec () {
   case "$prog" in
     */*)
       prog=$(abs_filename "$prog")
-      if test -x "$prog"; then
+      if test -x "$prog" && test ! -d "$prog"; then
 	echo "$prog"
 	return 0
       fi
@@ -159,7 +159,7 @@ find_exec () {
       IFS=":"
       for dir in $path; do
 	file="$dir/$prog"
-	if test -x "$file"; then
+	if test -x "$file" && test ! -d "$file"; then
 	  echo "$file"
 	  return 0
 	fi
