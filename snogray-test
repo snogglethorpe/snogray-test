@@ -218,6 +218,17 @@ if test x"$log_dir" != x; then
 fi
 
 
+# Copy the file "$1" to $log_dir if log_dir has been set and "$1"
+# exists.
+#
+copy_to_log_dir ()
+{
+  if test x"$log_dir" != x && test -r "$1"; then
+    cp "$1" "$log_dir"
+  fi
+}
+
+
 # Run snogray on the test scene file $1, placing the output into $2.
 # Remaining arguments are passed to snogray.  Return status is 0 for a
 # successful run, and non-zero if snogray failed.
@@ -518,12 +529,7 @@ run_test ()
 	then
 	  if ref_image_differs "$testout" "$ref_image"; then
 	    failures=$(cat_lines "$failures" "Reference image differs: $ref_image")
-	    if test x"$log_dir" != x; then
-	      new_ref_image=$(make_ref_image "$test")
-	      if test -r "$new_ref_image"; then
-		cp "$new_ref_image" "$log_dir"
-	      fi
-	    fi
+	    copy_to_log_dir "$(make_ref_image "$testout")"
 	  fi
 	fi
 
@@ -546,9 +552,7 @@ run_test ()
 	      # PBRT succeeded
 	      if images_differ "$testout" "$pbrtout"; then
 		failures=$(cat_lines "$failures" "PBRT output differs")
-		if test x"$log_dir" != x && test -r "$pbrtout"; then
-		  cp "$pbrtout" "$log_dir"
-		fi
+		copy_to_log_dir "$pbrtout"
 	      fi
 	    else
 	      # PBRT failed
@@ -570,9 +574,7 @@ run_test ()
 	  if test $? = 0; then
 	    if images_differ "$testout" "$compare_out"; then
 	      failures=$(cat_lines "$failures" "Comparison output '$compare' differs")
-	      if test x"$log_dir" != x && test -r "$compare_out"; then
-		cp "$compare_out" "$log_dir"
-	      fi
+	      copy_to_log_dir "$compare_out"
 	    fi
 	  fi
 	done
@@ -600,8 +602,8 @@ run_test ()
 	if test x"$log_dir" != x; then
 	  faillog="$(output_file_name failures "$test" log)"
 	  echo "$failures" > "$faillog"
-	  cp "$faillog" "$log_dir"
-	  test -r "$testout" && cp "$testout" "$log_dir"
+	  copy_to_log_dir "$faillog"
+	  copy_to_log_dir "$testout"
 	fi
       fi
       ;;
