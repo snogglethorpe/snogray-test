@@ -47,10 +47,10 @@ reference_ext=exr
 #
 ref_image_snogcvt_opts='-s16'
 
-# Difference in average intensity within which images will be
+# Default difference in average intensity within which images will be
 # considered identical.
 #
-image_delta_thresh='0.002'
+default_image_delta_thresh='0.002'
 
 me=$(basename $0)
 
@@ -354,17 +354,18 @@ pfx_lines ()
   echo "$2" | sed "s@^@$1@g"
 }
 
-# "$1", "$2" = images to compare
+# $1, $2 = images to compare
+# $3 = comparison threshold, default $default_image_delta_thresh
 images_differ ()
 {
-  if $SNOGDIFF 2>/dev/null -q -d"$image_delta_thresh" "$1" "$2"; then
+  if $SNOGDIFF 2>/dev/null -q -d"${3:-$default_image_delta_thresh}" "$1" "$2"; then
     false
   else
     true
   fi
 }
 
-# "$1", "$2" = images to compare
+# $1, $2 = images to compare
 image_diff ()
 {
   $SNOGDIFF 2>&1 "$1" "$2"
@@ -382,9 +383,10 @@ make_ref_image ()
 
 # $1 = test output file name
 # $2 = old ref image file name
+# $3 = comparison threshold
 ref_image_differs ()
 {
-  images_differ "$(make_ref_image "$1")" "$2"
+  images_differ "$(make_ref_image "$1")" "$2" "$3"
 }
 
 # $1 = test output file name
@@ -521,6 +523,7 @@ run_test ()
     *.lua|*.pbrt|*.sh)
       failures=''
       pbrtout=''
+      image_compare_thresh=$(get_param compare_threshold "$test" "$default_image_delta_thresh")
 
       testout=$(output_file_name snogray-out "$test" "$out_ext")
 
@@ -552,7 +555,8 @@ run_test ()
 	  && test -r "$ref_image"	\
 	  && test $update_ref_images != all
 	then
-	  if ref_image_differs "$testout" "$ref_image"; then
+	  if ref_image_differs "$testout" "$ref_image" "$image_compare_thresh"
+	  then
 	    failures=$(cat_lines "$failures" "Reference image differs: $ref_image")
 	    failures=$(cat_lines "$failures" "  $(ref_image_diff "$testout" "$ref_image")")
 	    copy_to_log_dir "$(make_ref_image "$testout")"
@@ -576,7 +580,8 @@ run_test ()
 
 	    if test $? = 0; then
 	      # PBRT succeeded
-	      if images_differ "$testout" "$pbrtout"; then
+	      if images_differ "$testout" "$pbrtout" "$image_compare_thresh"
+	      then
 		failures=$(cat_lines "$failures" "PBRT output differs:")
 		failures=$(cat_lines "$failures" "  $(image_diff "$testout" "$pbrtout")")
 		copy_to_log_dir "$pbrtout"
@@ -599,7 +604,8 @@ run_test ()
 	  compare_log=$(run_snogray "$compare_file" "$compare_out")
 
 	  if test $? = 0; then
-	    if images_differ "$testout" "$compare_out"; then
+	    if images_differ "$testout" "$compare_out" "$image_compare_thresh"
+	    then
 	      failures=$(cat_lines "$failures" "Comparison output '$compare' differs")
 	      copy_to_log_dir "$compare_out"
 	    fi
